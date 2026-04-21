@@ -3,6 +3,7 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --font-outfit: 'Outfit', sans-serif;
 }
 
 @theme inline {
@@ -10,6 +11,7 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --font-outfit: var(--font-outfit);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,5 +24,24 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-outfit);
+}
+
+/* Custom Typography for High-Conversion Templates */
+h1, h2, h3, h4, .font-outfit {
+  font-family: var(--font-outfit) !important;
+}
+
+.prose {
+  font-family: var(--font-outfit);
+  line-height: 1.6;
+}
+
+/* EduKyu Specific Accents */
+.text-accent-gold {
+  color: #FFD700;
+}
+
+.bg-primary-teal {
+  background-color: #024B53;
 }
