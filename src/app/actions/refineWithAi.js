@@ -27,10 +27,10 @@ export async function refineContentAction(content, metadata) {
       ]
     });
 
-    return { 
-      success: true, 
-      data: response.content[0].text, 
-      refined: true 
+    return {
+      success: true,
+      data: response.content[0].text,
+      refined: true
     };
   } catch (error) {
     console.error("AI Refinement Error:", error);

@@ -166,21 +166,38 @@ export default function UploadPage() {
             </div>
 
             <div className="p-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800 mt-4">
-              <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center justify-between mb-6">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Design Template</h3>
-                <span className="text-xs text-indigo-600 font-bold cursor-pointer hover:underline flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  Change Selection
-                </span>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-12 bg-slate-200 dark:bg-slate-800 rounded-lg overflow-hidden flex-shrink-0">
-                  <img src="https://images.unsplash.com/photo-1499750310107-5fef28a66643?q=80&w=100&auto=format&fit=crop" className="w-full h-full object-cover" />
-                </div>
-                <div>
-                  <p className="font-bold text-sm">Modern Editorial (Default)</p>
-                  <p className="text-xs text-slate-500">Optimized for premium documents</p>
-                </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { id: 'editorial', name: 'Editorial', img: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?q=80&w=100&auto=format&fit=crop' },
+                  { id: 'minimal', name: 'Minimal', img: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?q=80&w=100&auto=format&fit=crop' },
+                  { id: 'academic', name: 'Academic', img: 'https://images.unsplash.com/photo-1544377193-33dcf4d68fb5?q=80&w=100&auto=format&fit=crop' },
+                  { id: 'landing', name: 'Landing', img: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=100&auto=format&fit=crop' },
+                ].map((tmpl) => (
+                  <button
+                    key={tmpl.id}
+                    onClick={() => {
+                      const settings = JSON.parse(localStorage.getItem("pageforge_settings") || "{}");
+                      settings.activeTemplate = tmpl.id;
+                      localStorage.setItem("pageforge_settings", JSON.stringify(settings));
+                      setFiles(prev => [...prev]); // Trigger re-render to show selection
+                    }}
+                    className={cn(
+                      "group relative aspect-[4/3] rounded-xl overflow-hidden border-2 transition-all p-0",
+                      (JSON.parse(localStorage.getItem("pageforge_settings") || "{}").activeTemplate === tmpl.id || (tmpl.id === 'editorial' && !JSON.parse(localStorage.getItem("pageforge_settings") || "{}").activeTemplate))
+                        ? "border-indigo-600 ring-2 ring-indigo-600/20" 
+                        : "border-transparent opacity-60 hover:opacity-100"
+                    )}
+                  >
+                    <img src={tmpl.img} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                    <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2">
+                       <p className="text-[10px] font-bold text-white uppercase tracking-widest text-center">{tmpl.name}</p>
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
 
