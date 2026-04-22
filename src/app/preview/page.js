@@ -8,19 +8,38 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { getSettings, updateSettings } from "@/lib/store";
 import { cn } from "@/lib/utils";
+import { db, COLLECTIONS } from "@/lib/firebase";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { flattenParsedData, sanitizeForFirestore } from "@/lib/firestore-utils";
 
 export default function PreviewPage() {
   const [parsedData, setParsedData] = useState(null);
   const [settings, setSettings] = useState(null);
   const [showCustomizer, setShowCustomizer] = useState(false);
+  const [aiThemeDescription, setAiThemeDescription] = useState('');
   const router = useRouter();
 
   useEffect(() => {
-    const data = localStorage.getItem("parsedContent");
+    // Get data from sessionStorage (industry standard for temporary data)
+    const data = sessionStorage.getItem("parsedContent");
     if (data) {
       setParsedData(JSON.parse(data));
     }
-    setSettings(getSettings());
+    
+    // Get settings from sessionStorage or use defaults
+    const selectedTemplate = sessionStorage.getItem("selectedTemplate") || 'editorial';
+    const aiDescription = sessionStorage.getItem("aiThemeDescription") || '';
+    
+    const templateSettings = getSettings();
+    templateSettings.activeTemplate = selectedTemplate;
+    
+    // If AI theme was selected, apply the description
+    if (selectedTemplate === 'custom' && aiDescription) {
+      templateSettings.aiThemeDescription = aiDescription;
+      setAiThemeDescription(aiDescription);
+    }
+    
+    setSettings(templateSettings);
   }, []);
 
   const handleUpdateSetting = (updates) => {
@@ -68,34 +87,84 @@ export default function PreviewPage() {
       header: "bg-[#024B53] rounded-[32px] md:mx-4 overflow-hidden min-h-[500px] text-white",
       title: "text-white text-4xl md:text-6xl font-black text-left",
       article: "px-4 py-16 bg-white dark:bg-slate-900 mt-8 rounded-[32px] md:mx-4 shadow-xl"
+    },
+    newsletter: {
+      container: "max-w-3xl",
+      header: "bg-gradient-to-r from-purple-600 to-pink-600 text-white",
+      title: "text-3xl md:text-4xl font-bold",
+      article: "p-8 md:p-12 bg-white dark:bg-slate-900"
+    },
+    portfolio: {
+      container: "max-w-6xl",
+      header: "bg-gradient-to-br from-amber-50 to-orange-100 dark:from-slate-900 dark:to-orange-900/20 text-slate-900 dark:text-white",
+      title: "text-4xl md:text-5xl font-black text-slate-900 dark:text-white",
+      article: "p-8 md:p-16"
+    },
+    custom: {
+      container: "max-w-4xl",
+      header: aiThemeDescription ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white" : "bg-gradient-to-br from-slate-900 to-indigo-900 text-white",
+      title: "text-3xl md:text-4xl font-bold",
+      article: "p-8 md:p-12"
     }
   };
 
   const style = templateStyles[settings.activeTemplate] || templateStyles.editorial;
 
-  const handlePublish = () => {
-    const slug = localStorage.getItem("pendingSlug") || "untitled-" + Math.random().toString(36).substr(2, 5);
-    const siteName = localStorage.getItem("pendingSiteName") || parsedData.name;
-    
-    const sites = JSON.parse(localStorage.getItem("pageforge_published_sites") || "[]");
-    const newSite = {
-      slug,
-      siteName,
-      data: parsedData,
-      settings,
-      publishedAt: new Date().toISOString()
-    };
-    
-    const index = sites.findIndex(s => s.slug === slug);
-    if (index > -1) {
-      sites[index] = newSite;
-    } else {
-      sites.push(newSite);
+  const handlePublish = async () => {
+    // Get values from sessionStorage with proper fallbacks
+    const rawSlug = sessionStorage.getItem("urlSlug") || "untitled-" + Math.random().toString(36).substr(2, 5);
+    const slug = rawSlug.trim().toLowerCase().replace(/\s+/g, '-');
+    const siteName = parsedData.name || slug;
+
+    try {
+      const siteRef = doc(db, COLLECTIONS.SITES, slug);
+
+      // Sanitize parsedData to remove undefined values and ensure Firestore compatibility
+      const cleanData = flattenParsedData(parsedData);
+
+      // Simplify settings - only keep essential fields
+      const cleanSettings = {
+        activeTemplate: String(settings?.activeTemplate || 'editorial'),
+        theme: {
+          titleColor: String(settings?.theme?.titleColor || '#025E68'),
+          accentColor: String(settings?.theme?.accentColor || '#FFD700')
+        }
+      };
+
+      // Add AI theme if present
+      if (settings?.activeTemplate === 'custom' && aiThemeDescription) {
+        cleanSettings.aiThemeDescription = String(aiThemeDescription);
+        cleanSettings.theme.aiGenerated = true;
+      }
+
+      const siteData = {
+        slug: String(slug),
+        siteName: String(siteName),
+        data: cleanData,
+        settings: cleanSettings,
+        publishedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+
+      // Debug: Log summary only (not full content to avoid 2.7MB logs!)
+      console.log('Publishing to Firebase:', {
+        slug: siteData.slug,
+        siteName: siteData.siteName,
+        dataType: siteData.data.type,
+        contentSize: `${(siteData.data.content?.length || 0 / 1024).toFixed(2)} KB`,
+        hasRows: siteData.data.rows !== undefined,
+        template: siteData.settings.activeTemplate
+      });
+
+      await setDoc(siteRef, siteData);
+
+      toast.success(`Site Published to /${slug}!`);
+      router.push(`/admin`);
+    } catch (error) {
+      console.error("Error publishing site:", error);
+      console.error("Error details:", error.message);
+      toast.error("Cloud publishing failed: " + error.message);
     }
-    
-    localStorage.setItem("pageforge_published_sites", JSON.stringify(sites));
-    toast.success(`Site Published to /${slug}!`);
-    router.push(`/admin`);
   };
 
   return (
@@ -112,7 +181,7 @@ export default function PreviewPage() {
             </Link>
             <div className="h-6 w-px bg-slate-200 dark:bg-slate-800 hidden sm:block" />
             <span className="font-semibold hidden sm:block truncate max-w-[200px]">
-              Previewing: {localStorage.getItem("pendingSiteName") || parsedData.name}
+              Previewing: {parsedData.name || sessionStorage.getItem("urlSlug") || 'Untitled'}
             </span>
           </div>
           

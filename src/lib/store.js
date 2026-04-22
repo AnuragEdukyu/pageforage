@@ -35,7 +35,8 @@ export const DEFAULT_SETTINGS = {
 
 export function getSettings() {
   if (typeof window === "undefined") return DEFAULT_SETTINGS;
-  const saved = localStorage.getItem(SETTINGS_KEY);
+  // For temporary session data, use sessionStorage (industry standard)
+  const saved = sessionStorage.getItem(SETTINGS_KEY) || localStorage.getItem(SETTINGS_KEY);
   if (!saved) return DEFAULT_SETTINGS;
   
   try {
@@ -57,7 +58,8 @@ export function getSettings() {
 
 export function saveSettings(settings) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  // Use sessionStorage for temporary session data (industry standard)
+  sessionStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
 export function updateSettings(updates) {

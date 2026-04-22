@@ -14,6 +14,13 @@ import { parseFileAction } from "../actions/parseFile";
 export default function UploadPage() {
   const [files, setFiles] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [urlSlug, setUrlSlug] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState('editorial');
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showAIBuilder, setShowAIBuilder] = useState(false);
+  const [aiThemeDescription, setAiThemeDescription] = useState('');
+  const [parsedData, setParsedData] = useState(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const router = useRouter();
 
   const onDrop = useCallback((acceptedFiles) => {
@@ -54,10 +61,20 @@ export default function UploadPage() {
       const result = await parseFileAction(formData);
       
       if (result.success) {
-        // Save parsed data to localStorage for the preview page
-        localStorage.setItem("parsedContent", JSON.stringify(result.data));
+        // Store parsed data and show template picker while "processing"
+        setParsedData(result.data);
+        setShowTemplatePicker(true);
+        // Simulate upload progress
+        const progressInterval = setInterval(() => {
+          setUploadProgress(prev => {
+            if (prev >= 100) {
+              clearInterval(progressInterval);
+              return 100;
+            }
+            return prev + 10;
+          });
+        }, 200);
         toast.success("File parsed successfully!");
-        router.push("/processing");
       } else {
         toast.error("Failed to parse file: " + result.error);
         setIsUploading(false);
@@ -67,6 +84,23 @@ export default function UploadPage() {
       toast.error("An error occurred during upload.");
       setIsUploading(false);
     }
+  };
+
+  const handleContinue = async () => {
+    if (!parsedData) return;
+    
+    // Store data in sessionStorage for the preview page
+    sessionStorage.setItem("parsedContent", JSON.stringify(parsedData));
+    sessionStorage.setItem("urlSlug", urlSlug || parsedData.name.toLowerCase().replace(/\s+/g, '-'));
+    sessionStorage.setItem("selectedTemplate", selectedTemplate);
+    
+    // If AI theme was selected, store the theme description
+    if (selectedTemplate === 'custom' && aiThemeDescription) {
+      sessionStorage.setItem("aiThemeDescription", aiThemeDescription);
+    }
+    
+    // Navigate to preview page
+    router.push("/preview");
   };
 
   return (
@@ -141,66 +175,24 @@ export default function UploadPage() {
               </div>
             ))}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-500 uppercase tracking-wider">Site Name</label>
-                <input 
-                  type="text" 
-                  placeholder="My Portfolio" 
-                  className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-4 py-3 outline-none focus:ring-2 ring-indigo-500/50"
-                  onChange={(e) => localStorage.setItem("pendingSiteName", e.target.value)}
-                />
-              </div>
+            <div className="mt-6">
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-500 uppercase tracking-wider">URL Slug</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">/</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm">yourdomain.com/</span>
                   <input 
                     type="text" 
-                    placeholder="my-site" 
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-4 py-3 outline-none focus:ring-2 ring-indigo-500/50"
-                    onChange={(e) => localStorage.setItem("pendingSlug", e.target.value)}
+                    placeholder="my-portfolio" 
+                    value={urlSlug}
+                    onChange={(e) => setUrlSlug(e.target.value)}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl pl-32 pr-4 py-3 outline-none focus:ring-2 ring-indigo-500/50"
                   />
                 </div>
+                <p className="text-xs text-slate-400 mt-1">This will be your page URL: yourdomain.com/{urlSlug || 'my-portfolio'}</p>
               </div>
             </div>
 
-            <div className="p-6 bg-slate-50 dark:bg-slate-900/50 rounded-3xl border border-slate-100 dark:border-slate-800 mt-4">
-              <div className="flex items-center justify-between mb-6">
-                <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400">Design Template</h3>
-              </div>
-              
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { id: 'editorial', name: 'Editorial', img: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?q=80&w=100&auto=format&fit=crop' },
-                  { id: 'minimal', name: 'Minimal', img: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?q=80&w=100&auto=format&fit=crop' },
-                  { id: 'academic', name: 'Academic', img: 'https://images.unsplash.com/photo-1544377193-33dcf4d68fb5?q=80&w=100&auto=format&fit=crop' },
-                  { id: 'landing', name: 'Landing', img: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=100&auto=format&fit=crop' },
-                ].map((tmpl) => (
-                  <button
-                    key={tmpl.id}
-                    onClick={() => {
-                      const settings = JSON.parse(localStorage.getItem("pageforge_settings") || "{}");
-                      settings.activeTemplate = tmpl.id;
-                      localStorage.setItem("pageforge_settings", JSON.stringify(settings));
-                      setFiles(prev => [...prev]); // Trigger re-render to show selection
-                    }}
-                    className={cn(
-                      "group relative aspect-[4/3] rounded-xl overflow-hidden border-2 transition-all p-0",
-                      (JSON.parse(localStorage.getItem("pageforge_settings") || "{}").activeTemplate === tmpl.id || (tmpl.id === 'editorial' && !JSON.parse(localStorage.getItem("pageforge_settings") || "{}").activeTemplate))
-                        ? "border-indigo-600 ring-2 ring-indigo-600/20" 
-                        : "border-transparent opacity-60 hover:opacity-100"
-                    )}
-                  >
-                    <img src={tmpl.img} className="w-full h-full object-cover transition-transform group-hover:scale-110" />
-                    <div className="absolute inset-x-0 bottom-0 bg-black/60 p-2">
-                       <p className="text-[10px] font-bold text-white uppercase tracking-widest text-center">{tmpl.name}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
+            
             <button
               onClick={handleProcess}
               disabled={isUploading}
@@ -215,6 +207,219 @@ export default function UploadPage() {
                 <span>Forge My Page</span>
               )}
             </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Enhanced Template Picker Modal */}
+      <AnimatePresence>
+        {showTemplatePicker && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-slate-900 rounded-3xl max-w-6xl w-full max-h-[90vh] overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold mb-2">Choose Your Template</h2>
+                    <p className="text-slate-600 dark:text-slate-400">Select a template that best fits your content</p>
+                  </div>
+                  <button
+                    onClick={() => setShowTemplatePicker(false)}
+                    className="p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                {/* Upload Progress */}
+                <div className="mt-4">
+                  <div className="flex items-center justify-between text-sm text-slate-500 mb-2">
+                    <span>Processing your file...</span>
+                    <span>{uploadProgress}%</span>
+                  </div>
+                  <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2">
+                    <div 
+                      className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 overflow-y-auto max-h-[60vh]">
+                {!showAIBuilder ? (
+                  <div className="space-y-8">
+                    {/* Template Grid */}
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">Popular Templates</h3>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {[
+                          { 
+                            id: 'editorial', 
+                            name: 'Editorial', 
+                            description: 'Perfect for articles and publications',
+                            preview: 'bg-gradient-to-br from-slate-900 to-indigo-900 text-white',
+                            img: 'https://images.unsplash.com/photo-1499750310107-5fef28a66643?q=80&w=300&auto=format&fit=crop'
+                          },
+                          { 
+                            id: 'minimal', 
+                            name: 'Minimal', 
+                            description: 'Clean and simple design',
+                            preview: 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800',
+                            img: 'https://images.unsplash.com/photo-1455390582262-044cdead277a?q=80&w=300&auto=format&fit=crop'
+                          },
+                          { 
+                            id: 'academic', 
+                            name: 'Academic', 
+                            description: 'Professional and scholarly layout',
+                            preview: 'bg-slate-50 dark:bg-slate-800/50 border-t-8 border-indigo-600',
+                            img: 'https://images.unsplash.com/photo-1544377193-33dcf4d68fb5?q=80&w=300&auto=format&fit=crop'
+                          },
+                          { 
+                            id: 'landing', 
+                            name: 'Landing', 
+                            description: 'High-conversion marketing page',
+                            preview: 'bg-[#024B53] text-white rounded-2xl',
+                            img: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=300&auto=format&fit=crop'
+                          },
+                          { 
+                            id: 'newsletter', 
+                            name: 'Newsletter', 
+                            description: 'Email-friendly layout',
+                            preview: 'bg-gradient-to-r from-purple-600 to-pink-600 text-white',
+                            img: 'https://images.unsplash.com/photo-1611224923853-80b023f02d71?q=80&w=300&auto=format&fit=crop'
+                          },
+                          { 
+                            id: 'portfolio', 
+                            name: 'Portfolio', 
+                            description: 'Showcase your work beautifully',
+                            preview: 'bg-gradient-to-br from-amber-50 to-orange-100 dark:from-slate-900 dark:to-orange-900/20',
+                            img: 'https://images.unsplash.com/photo-1559028006-848e2e8f5d15?q=80&w=300&auto=format&fit=crop'
+                          },
+                        ].map((tmpl) => (
+                          <button
+                            key={tmpl.id}
+                            onClick={() => setSelectedTemplate(tmpl.id)}
+                            className={cn(
+                              "group text-left transition-all duration-200",
+                              selectedTemplate === tmpl.id 
+                                ? "scale-105" 
+                                : "hover:scale-102"
+                            )}
+                          >
+                            <div className={cn(
+                              "rounded-xl overflow-hidden border-2 transition-all h-48 relative",
+                              selectedTemplate === tmpl.id 
+                                ? "border-indigo-600 ring-2 ring-indigo-600/20" 
+                                : "border-slate-200 dark:border-slate-800 hover:border-slate-300"
+                            )}>
+                              <img src={tmpl.img} className="w-full h-full object-cover" />
+                              <div className={cn(
+                                "absolute inset-0 flex items-end p-4",
+                                tmpl.preview
+                              )}>
+                                <div className="text-white">
+                                  <h4 className="font-bold text-lg">{tmpl.name}</h4>
+                                  <p className="text-sm opacity-90">{tmpl.description}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* AI Builder Option */}
+                    <div className="text-center pt-8 border-t border-slate-200 dark:border-slate-800">
+                      <p className="text-slate-600 dark:text-slate-400 mb-4">
+                        Don't see a template you like?
+                      </p>
+                      <button
+                        onClick={() => setShowAIBuilder(true)}
+                        className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 transition-all flex items-center gap-2 mx-auto"
+                      >
+                        <Sparkles className="w-5 h-5" />
+                        Build with AI Instead
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* AI Theme Builder */
+                  <div className="space-y-6">
+                    <div>
+                      <h3 className="text-lg font-semibold mb-4">AI Theme Builder</h3>
+                      <p className="text-slate-600 dark:text-slate-400 mb-6">
+                        Describe your ideal design in natural language
+                      </p>
+                      
+                      <textarea
+                        value={aiThemeDescription}
+                        onChange={(e) => setAiThemeDescription(e.target.value)}
+                        placeholder="e.g., 'A modern tech website with dark theme, neon accents, and bold typography' or 'A clean medical site with calming blues and professional layout'..."
+                        className="w-full h-32 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl p-4 resize-none outline-none focus:ring-2 ring-indigo-500/50"
+                      />
+                    </div>
+
+                    {/* Live AI Preview */}
+                    {aiThemeDescription && (
+                      <div>
+                        <h4 className="font-medium mb-3">Live Preview</h4>
+                        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6">
+                          <div className="space-y-4">
+                            <div className="h-4 bg-gradient-to-r from-indigo-500 to-purple-500 rounded w-3/4"></div>
+                            <div className="space-y-2">
+                              <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded"></div>
+                              <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-5/6"></div>
+                              <div className="h-3 bg-slate-200 dark:bg-slate-700 rounded w-4/6"></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-4">
+                      <button
+                        onClick={() => setShowAIBuilder(false)}
+                        className="px-6 py-3 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl font-semibold hover:bg-slate-300 dark:hover:bg-slate-700 transition-all"
+                      >
+                        Back to Templates
+                      </button>
+                      <button
+                        onClick={() => {
+                          setSelectedTemplate('custom');
+                          handleContinue();
+                        }}
+                        disabled={!aiThemeDescription}
+                        className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl font-semibold hover:from-purple-700 hover:to-pink-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Use AI Theme
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Continue Button */}
+              {!showAIBuilder && (
+                <div className="p-6 border-t border-slate-200 dark:border-slate-800">
+                  <button
+                    onClick={handleContinue}
+                    className="w-full py-4 bg-indigo-600 text-white rounded-xl font-semibold hover:bg-indigo-700 transition-all"
+                  >
+                    Continue with {selectedTemplate === 'custom' ? 'AI Theme' : selectedTemplate.charAt(0).toUpperCase() + selectedTemplate.slice(1)} Template
+                  </button>
+                </div>
+              )}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

@@ -2,6 +2,9 @@
 const nextConfig = {
   /* config options here */
   reactCompiler: true,
+  logging: {
+    serverFunctions: false,
+  },
 };
 
 export default nextConfig;

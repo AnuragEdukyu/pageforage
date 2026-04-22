@@ -7,6 +7,8 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { toast } from "react-toastify";
 import { getSettings, updateSettings } from "@/lib/store";
+import { db, COLLECTIONS } from "@/lib/firebase";
+import { collection, getDocs, deleteDoc, doc, query, orderBy } from "firebase/firestore";
 
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState("sites");
@@ -16,8 +18,27 @@ export default function AdminPage() {
 
   useEffect(() => {
     setSettings(getSettings());
-    const savedSites = JSON.parse(localStorage.getItem("pageforge_published_sites") || "[]");
-    setSites(savedSites);
+    
+    const fetchSites = async () => {
+      try {
+        const sitesRef = collection(db, COLLECTIONS.SITES);
+        const q = query(sitesRef, orderBy("publishedAt", "desc"));
+        const querySnapshot = await getDocs(q);
+        const sitesList = querySnapshot.docs.map(doc => ({
+          ...doc.data(),
+          // Use id as slug just in case, but slug field should be there
+          slug: doc.id,
+          // Ensure publishedAt is a string for UI
+          publishedAt: doc.data().publishedAt?.toDate ? doc.data().publishedAt.toDate().toISOString() : doc.data().publishedAt
+        }));
+        setSites(sitesList);
+      } catch (error) {
+        console.error("Error fetching sites from Firestore:", error);
+        setSites([]);
+      }
+    };
+
+    fetchSites();
   }, []);
 
   const handleSave = () => {
@@ -33,11 +54,18 @@ export default function AdminPage() {
     setSettings(prev => ({ ...prev, activeTemplate: templateId }));
   };
 
-  const deleteSite = (slug) => {
-    const updated = sites.filter(s => s.slug !== slug);
-    setSites(updated);
-    localStorage.setItem("pageforge_published_sites", JSON.stringify(updated));
-    toast.info("Site removed.");
+  const deleteSite = async (slug) => {
+    if (!confirm("Are you sure you want to delete this site?")) return;
+    
+    try {
+      await deleteDoc(doc(db, COLLECTIONS.SITES, slug));
+      const updated = sites.filter(s => s.slug !== slug);
+      setSites(updated);
+      toast.success("Site deleted from cloud.");
+    } catch (error) {
+      console.error("Error deleting site:", error);
+      toast.error("Failed to delete from cloud.");
+    }
   };
 
   if (!settings) return null;

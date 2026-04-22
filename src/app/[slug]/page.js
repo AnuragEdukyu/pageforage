@@ -6,6 +6,8 @@ import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Heart, MessageSquare, Sparkles, AlertCircle } from "lucide-react";
 import Link from "next/link";
+import { db, COLLECTIONS } from "@/lib/firebase";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function PublishedSitePage() {
   const { slug } = useParams();
@@ -13,13 +15,29 @@ export default function PublishedSitePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const sites = JSON.parse(localStorage.getItem("pageforge_published_sites") || "[]");
-    const foundSite = sites.find(s => s.slug === slug);
-    
-    if (foundSite) {
-      setSite(foundSite);
+    const fetchSite = async () => {
+      try {
+        const siteRef = doc(db, COLLECTIONS.SITES, slug);
+        const siteSnap = await getDoc(siteRef);
+        
+        if (siteSnap.exists()) {
+          const siteData = siteSnap.data();
+          // Convert Firebase timestamp to String if needed for compatibility
+          if (siteData.publishedAt?.toDate) {
+            siteData.publishedAt = siteData.publishedAt.toDate().toISOString();
+          }
+          setSite(siteData);
+        }
+      } catch (error) {
+        console.error("Error fetching site from Firestore:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (slug) {
+      fetchSite();
     }
-    setLoading(false);
   }, [slug]);
 
   if (loading) {
@@ -169,7 +187,7 @@ export default function PublishedSitePage() {
                   {site.siteName}
                 </div>
                 <h1 className={cn("text-white drop-shadow-sm mb-6 leading-tight", style.title)}>
-                  {data.metadata.title || site.siteName}
+                  {data.title || site.siteName}
                 </h1>
                 <p className="text-white/80 text-lg mb-8 max-w-md">
                   Successfully forged from your PDF content.
@@ -184,11 +202,11 @@ export default function PublishedSitePage() {
           ) : (
             <div className="flex flex-col gap-4 w-full">
               {isCustom && <div className="h-1.5 w-24 bg-indigo-500 rounded-full mb-4" />}
-              <h1 
+              <h1
                 className={cn("z-10 drop-shadow-sm leading-tight", style.title, !isCustom && "text-white")}
                 style={isCustom ? { fontSize: theme.titleSizeDesktop, color: theme.titleColor } : {}}
               >
-                {data.metadata.title || site.siteName}
+                {data.title || site.siteName}
               </h1>
               <div className="flex items-center gap-4 z-10">
                 <p className={cn("text-xs font-bold uppercase tracking-widest", isCustom ? "text-slate-400" : "text-white/60")}>

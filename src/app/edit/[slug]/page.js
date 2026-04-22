@@ -6,6 +6,8 @@ import { ArrowLeft, Save, Globe, FileText, Settings, Layout } from "lucide-react
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { db, COLLECTIONS } from "@/lib/firebase";
+import { doc, getDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { toast } from "react-toastify";
 
 export default function EditSitePage() {
@@ -17,46 +19,50 @@ export default function EditSitePage() {
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const sites = JSON.parse(localStorage.getItem("pageforge_published_sites") || "[]");
-    const found = sites.find(s => s.slug === slug);
-    if (found) {
-      setSite(found);
-      setContent(found.data.content);
-      setTitle(found.data.metadata.title || found.siteName);
-    } else {
-      toast.error("Site not found!");
-      router.push("/admin");
+    const fetchSite = async () => {
+      try {
+        const siteRef = doc(db, COLLECTIONS.SITES, slug);
+        const siteSnap = await getDoc(siteRef);
+        
+        if (siteSnap.exists()) {
+          const found = siteSnap.data();
+          setSite(found);
+          setContent(found.data.content);
+          setTitle(found.data.title || found.siteName);
+        } else {
+          toast.error("Site not found in cloud!");
+          router.push("/admin");
+        }
+      } catch (error) {
+        console.error("Error fetching site:", error);
+        toast.error("Failed to fetch site from cloud.");
+      }
+    };
+
+    if (slug) {
+      fetchSite();
     }
   }, [slug, router]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setIsSaving(true);
     
-    const sites = JSON.parse(localStorage.getItem("pageforge_published_sites") || "[]");
-    const updated = sites.map(s => {
-      if (s.slug === slug) {
-        return {
-          ...s,
-          siteName: title,
-          data: {
-            ...s.data,
-            content: content,
-            metadata: {
-              ...s.data.metadata,
-              title: title
-            }
-          }
-        };
-      }
-      return s;
-    });
-
-    localStorage.setItem("pageforge_published_sites", JSON.stringify(updated));
-    
-    setTimeout(() => {
+    try {
+      const siteRef = doc(db, COLLECTIONS.SITES, slug);
+      await updateDoc(siteRef, {
+        siteName: title,
+        "data.content": content,
+        "data.title": title,
+        updatedAt: serverTimestamp()
+      });
+      
+      toast.success("Cloud content updated successfully!");
+    } catch (error) {
+      console.error("Error updating site:", error);
+      toast.error("Failed to save changes to cloud.");
+    } finally {
       setIsSaving(false);
-      toast.success("Content updated successfully!");
-    }, 500);
+    }
   };
 
   if (!site) return null;
@@ -118,8 +124,10 @@ export default function EditSitePage() {
             <div className="space-y-6 flex-1 flex flex-col">
               <div>
                 <label className="block text-xs font-black uppercase text-slate-400 mb-2">Page Title</label>
-                <input 
+                <input
                   type="text"
+                  dir="ltr"
+                  lang="en"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="Enter page title..."
@@ -143,13 +151,36 @@ export default function EditSitePage() {
                   <button onClick={() => document.execCommand('formatBlock', false, 'p')} className="text-xs p-2 hover:bg-white dark:hover:bg-slate-800 rounded-lg transition-all">P</button>
                 </div>
 
-                <div 
+                <div
+                  ref={(el) => {
+                    if (el && !el.innerHTML) {
+                      el.innerHTML = content;
+                    }
+                  }}
                   contentEditable
-                  onInput={(e) => setContent(e.currentTarget.innerHTML)}
-                  dangerouslySetInnerHTML={{ __html: content }}
-                  className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 overflow-auto focus:ring-4 ring-indigo-500/10 outline-none prose dark:prose-invert max-w-none text-slate-700 dark:text-slate-300"
-                  style={{ minHeight: '300px' }}
-                />
+                  suppressContentEditableWarning
+                  dir="ltr"
+                  lang="en"
+                  spellCheck="true"
+                  onInput={(e) => {
+                    const html = e.currentTarget.innerHTML;
+                    setContent(html);
+                  }}
+                  onKeyDown={(e) => {
+                    // Force cursor to behave LTR
+                    e.currentTarget.style.direction = 'ltr';
+                  }}
+                  className="flex-1 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 overflow-auto focus:ring-4 ring-indigo-500/10 outline-none max-w-none text-slate-700 dark:text-slate-300 editor-ltr"
+                  style={{
+                    minHeight: '300px',
+                    direction: 'ltr !important',
+                    textAlign: 'left !important',
+                    unicodeBidi: 'bidi-override',
+                    writingMode: 'horizontal-tb'
+                  }}
+                >
+                  {!content && <span className="text-slate-400">Start typing...</span>}
+                </div>
               </div>
             </div>
           </div>
@@ -191,7 +222,36 @@ export default function EditSitePage() {
           background: rgba(0,0,0,0.1);
           border-radius: 10px;
         }
+
+        /* AGGRESSIVE LTR enforcement */
+        .editor-ltr,
+        .editor-ltr *,
+        .editor-ltr::before,
+        .editor-ltr::after {
+          direction: ltr !important;
+          text-align: left !important;
+          unicode-bidi: bidi-override !important;
+        }
+
+        input[type="text"] {
+          direction: ltr !important;
+          text-align: left !important;
+        }
+
+        /* Force all text input to be LTR */
+        [contenteditable="true"] {
+          -webkit-writing-mode: horizontal-tb !important;
+          writing-mode: horizontal-tb !important;
+          direction: ltr !important;
+        }
+
+        /* Override any inline RTL styles */
+        [dir="rtl"] {
+          direction: ltr !important;
+        }
       `}</style>
     </div>
   );
 }
+
+
